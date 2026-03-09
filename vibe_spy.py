@@ -16,16 +16,33 @@ def send_telegram_photo(caption, image_path):
 
 def get_ad_data(playwright: Playwright):
     browser = playwright.chromium.launch(headless=True)
-    context = browser.new_context(viewport={"width": 1280, "height": 2000})
+    context = browser.new_context(viewport={"width": 1280, "height": 3000}) # Made taller for more ads
     page = context.new_page()
     page.goto(TARGET_URL, wait_until="domcontentloaded", timeout=90000)
-    time.sleep(7) 
-    
+    time.sleep(10) # Initial load
+
+    # --- NEW: CLICK "SEE MORE" UNTIL GONE ---
+    for _ in range(5): # Adjust '5' if they have hundreds of ads
+        try:
+            # Facebook's "See More" button usually has this role or text
+            see_more = page.get_by_role("button", name=re.compile(r"See More|Lihat Lagi", re.IGNORECASE))
+            if see_more.is_visible():
+                see_more.click()
+                print("Clicked See More...")
+                time.sleep(3) # Wait for new ads to load
+            else:
+                break
+        except:
+            break
+    # ---------------------------------------
+
     ad_ids = page.get_by_text(re.compile(r"ID Pustaka:|ID:", re.IGNORECASE)).all()
     count = len(ad_ids)
     
     image_path = "snapshot.png"
-    page.screenshot(path=image_path)
+    # Full_page=True captures the entire long list, not just the top
+    page.screenshot(path=image_path, full_page=True) 
+    
     browser.close()
     return count, image_path
 
