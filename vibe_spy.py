@@ -16,31 +16,43 @@ def send_telegram_photo(caption, image_path):
 
 def get_ad_data(playwright: Playwright):
     browser = playwright.chromium.launch(headless=True)
-    # Set a very tall initial viewport to encourage loading
-    context = browser.new_context(viewport={"width": 1280, "height": 5000}) 
+    # Give the bot a "Phone-like" taller view to trigger more loads
+    context = browser.new_context(viewport={"width": 1280, "height": 1000}) 
     page = context.new_page()
     page.goto(TARGET_URL, wait_until="networkidle", timeout=90000)
-    time.sleep(5)
+    time.sleep(8)
 
-    # --- AGGRESSIVE SCROLL & BUTTON HUNT ---
-    for i in range(10):  # Try 10 times to find more ads
-        # 1. Scroll to the bottom of the page
-        page.mouse.wheel(0, 15000) 
-        time.sleep(4)
+    # --- THE "THUMB FLICK" SIMULATION ---
+    for i in range(12): # 12 scrolls should cover ~100+ ads
+        # Scroll down 1500 pixels (like a big thumb swipe)
+        page.mouse.wheel(0, 1500) 
+        time.sleep(3) # CRITICAL: Wait for the "Loading" circle to finish
         
-        # 2. Find and click ANY button that looks like "See More"
+        # Click the "See More" button if it appears
         try:
-            # This looks for buttons OR divs that contain the 'more' text
-            see_more = page.locator('div[role="button"]:has-text("More"), button:has-text("More"), div[role="button"]:has-text("Lagi")').first
+            # Facebook uses a specific class for that button in 2026
+            see_more = page.locator('div[role="button"]:has-text("See More"), div[role="button"]:has-text("Lihat Lagi")').first
             if see_more.is_visible():
                 see_more.click(force=True)
-                print(f"Action: Clicked 'See More' on loop {i}")
-                time.sleep(5) # Give it time to actually fetch new ads
-            else:
-                # If no button, try one last scroll
-                page.keyboard.press("End")
+                print(f"Scroll {i}: Clicked See More")
+                time.sleep(4)
         except:
-            page.keyboard.press("End")
+            pass
+
+    # --- THE "ID" COUNTING TRICK ---
+    # We count every unique "ID Pustaka" or "ID:" text found on the long page
+    all_text = page.content()
+    # This regex finds the pattern of ID numbers Facebook uses
+    found_ids = re.findall(r"ID(?:\sPustaka)?:\s?(\d+)", all_text)
+    unique_ids = set(found_ids) # Removes any double-counts
+    count = len(unique_ids)
+    
+    image_path = "snapshot.png"
+    # Take a "Tall" screenshot of the first 8000 pixels
+    page.screenshot(path=image_path, clip={"x": 0, "y": 0, "width": 1280, "height": 8000}) 
+    
+    browser.close()
+    return count, image_path
     # ---------------------------------------
 
     # Recount after all scrolling is done
