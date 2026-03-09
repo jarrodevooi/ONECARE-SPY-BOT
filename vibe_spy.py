@@ -13,56 +13,61 @@ def send_telegram_photo(caption, image_path):
 
 def get_ad_data(playwright: Playwright):
     browser = playwright.chromium.launch(headless=True)
-    # Using a slightly taller viewport to see more at once
+    # Using a taller viewport to trigger more initial ads
     context = browser.new_context(viewport={"width": 1280, "height": 1200})
     page = context.new_page()
 
     all_found_ids = set()
 
-    # Load and wait for the "Heavy" Meta scripts to fire
+    # 1. Go to the Page ID link
     page.goto(TARGET_URL, wait_until="networkidle", timeout=90000)
-    time.sleep(10)
+    
+    # 2. CRITICAL: Wait for the OneCare profile header to actually exist
+    # This prevents the '0 ads' error by making sure the page isn't blank
+    try:
+        page.wait_for_selector('div[role="main"]', timeout=20000)
+        time.sleep(5) 
+    except:
+        print("Page took too long to load, attempting to scroll anyway...")
 
-    # --- THE "VISUAL MEMORY" LOOP ---
+    # --- THE VISUAL MEMORY LOOP ---
     for i in range(15):
-        # 1. Scrape every ID currently visible on the screen
-        # We look for ANY 15-16 digit number in the page text
+        # Scrape IDs currently visible in the HTML
         content = page.content()
+        # Facebook Ad IDs are 15-16 digits
         ids_on_screen = re.findall(r"ID(?:\sPustaka)?:\s?(\d{15,16})", content)
         
         for ad_id in ids_on_screen:
             all_found_ids.add(ad_id)
         
-        print(f"Scroll {i}: Currently remembered {len(all_found_ids)} unique ads...")
+        print(f"Scroll {i}: Unique ads in memory: {len(all_found_ids)}")
 
-        # 2. Human-like Scroll
+        # Human-like scroll
         page.mouse.wheel(0, 2000)
         time.sleep(4)
         
-        # 3. Aggressive "See More" Clicker
+        # Handle the 'See More' / 'Lagi' button
         try:
-            # Looks for 'More' or 'Lagi' buttons
             btn = page.locator('div[role="button"]:has-text("More"), button:has-text("More"), div[role="button"]:has-text("Lagi")').first
             if btn.is_visible():
                 btn.click(force=True)
-                time.sleep(3)
+                time.sleep(4)
         except:
             pass
 
     count = len(all_found_ids)
     
-    # Fallback: if somehow it's still 0, try one last check for 'Active' badges
+    # Final Fallback: If memory is still 0, count the "Active" status labels
     if count == 0:
         badges = page.get_by_text(re.compile(r"Active|Aktif", re.IGNORECASE)).all()
         count = len(badges)
 
     image_path = "snapshot.png"
-    # Take a screenshot of the final state
+    # Screenshot of the page showing the ads (not a blank search bar)
     page.screenshot(path=image_path, full_page=True)
     
     browser.close()
     return count, image_path
-
 if __name__ == "__main__":
     with sync_playwright() as playwright:
         try:
