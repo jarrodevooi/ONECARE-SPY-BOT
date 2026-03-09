@@ -15,49 +15,48 @@ def send_telegram_photo(caption, image_path):
         requests.post(url, data={"chat_id": CHAT_ID, "caption": caption}, files={"photo": photo})
 
 def get_ad_data(playwright: Playwright):
-    # 1. Use a Mobile Device Profile
-    iphone = playwright.devices['iPhone 13']
     browser = playwright.chromium.launch(headless=True)
-    
-    # 2. Set the context to mimic a real mobile phone
-    context = browser.new_context(
-        **iphone,
-        user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1"
-    )
-    
+    # Use a standard desktop view but we will scroll it like a pro
+    context = browser.new_context(viewport={"width": 1280, "height": 900}) 
     page = context.new_page()
     page.goto(TARGET_URL, wait_until="networkidle", timeout=90000)
-    time.sleep(8)
+    time.sleep(7)
 
-    # --- MOBILE SCROLL LOOP ---
-    for i in range(15): 
-        # Mimic a thumb flick (scroll down 1200 pixels)
-        page.mouse.wheel(0, 1200) 
-        time.sleep(3) 
+    all_found_ids = set() # This is our "Memory"
+    
+    # --- THE RUNNING TOTAL SCROLL ---
+    for i in range(20): # More loops for high-volume accounts
+        # 1. Scrape IDs currently visible on the screen
+        current_content = page.content()
+        ids_on_screen = re.findall(r"ID(?:\sPustaka)?:\s?(\d+)", current_content)
         
-        # Mobile often has a "Load More" button instead of "See More"
+        # 2. Add them to our permanent set (automatically removes duplicates)
+        for ad_id in ids_on_screen:
+            all_found_ids.add(ad_id)
+        
+        print(f"Loop {i}: Total unique ads found so far: {len(all_found_ids)}")
+
+        # 3. Scroll down to trigger the NEXT batch
+        page.mouse.wheel(0, 2000) 
+        time.sleep(4) # Give Meta time to swap the 30 ads
+        
+        # 4. Handle the "See More" button if it blocks the scroll
         try:
-            load_more = page.get_by_role("button", name=re.compile(r"Load|More|Lagi", re.IGNORECASE)).first
-            if load_more.is_visible():
-                load_more.click(force=True)
-                print(f"Mobile Loop {i}: Tapped Load More")
-                time.sleep(4)
+            btn = page.locator('div[role="button"]:has-text("More"), button:has-text("More"), div[role="button"]:has-text("Lagi")').first
+            if btn.is_visible():
+                btn.click(force=True)
+                time.sleep(3)
         except:
             pass
 
-    # --- ACCURATE MOBILE COUNT ---
-    # Scrape all unique Ad IDs from the mobile source code
-    all_content = page.content()
-    found_ids = re.findall(r"ID(?:\sPustaka)?:\s?(\d+)", all_content)
-    unique_ids = set(found_ids)
-    count = len(unique_ids)
-    
-    # Take a tall screenshot that looks like a phone screen
+    # --- FINAL RESULTS ---
+    final_count = len(all_found_ids)
     image_path = "snapshot.png"
-    page.screenshot(path=image_path, clip={"x": 0, "y": 0, "width": 390, "height": 5000}) 
+    # Take a screenshot of the CURRENT view (usually the bottom of the list)
+    page.screenshot(path=image_path, full_page=True) 
     
     browser.close()
-    return count, image_path
+    return final_count, image_path
     # ---------------------------------------
 
     # Recount after all scrolling is done
