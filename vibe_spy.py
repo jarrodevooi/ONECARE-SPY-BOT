@@ -16,39 +16,39 @@ def send_telegram_photo(caption, image_path):
 
 def get_ad_data(playwright: Playwright):
     browser = playwright.chromium.launch(headless=True)
-    context = browser.new_context(viewport={"width": 1280, "height": 3000})
+    # Set a very tall initial viewport to encourage loading
+    context = browser.new_context(viewport={"width": 1280, "height": 5000}) 
     page = context.new_page()
     page.goto(TARGET_URL, wait_until="networkidle", timeout=90000)
-    
-    # --- AGGRESSIVE SCROLL & CLICK LOOP ---
-    last_height = page.evaluate("document.body.scrollHeight")
+    time.sleep(5)
+
+    # --- AGGRESSIVE SCROLL & BUTTON HUNT ---
     for i in range(10):  # Try 10 times to find more ads
-        # 1. Scroll to the bottom using the 'End' key
-        page.keyboard.press("End")
-        time.sleep(3)
+        # 1. Scroll to the bottom of the page
+        page.mouse.wheel(0, 15000) 
+        time.sleep(4)
         
-        # 2. Try to click "See More" or "Lihat Lagi" if it appears
+        # 2. Find and click ANY button that looks like "See More"
         try:
-            # Using a broader selector to find the button
-            see_more = page.locator('div[role="button"]:has-text("See More"), div[role="button"]:has-text("Lihat Lagi"), button:has-text("See More")')
+            # This looks for buttons OR divs that contain the 'more' text
+            see_more = page.locator('div[role="button"]:has-text("More"), button:has-text("More"), div[role="button"]:has-text("Lagi")').first
             if see_more.is_visible():
                 see_more.click(force=True)
-                print(f"Loop {i+1}: Clicked See More")
-                time.sleep(4)
+                print(f"Action: Clicked 'See More' on loop {i}")
+                time.sleep(5) # Give it time to actually fetch new ads
+            else:
+                # If no button, try one last scroll
+                page.keyboard.press("End")
         except:
-            pass
-            
-        # 3. Check if the page actually grew
-        new_height = page.evaluate("document.body.scrollHeight")
-        if new_height == last_height and i > 3: # If no growth after 4 tries, we're likely done
-            break
-        last_height = new_height
+            page.keyboard.press("End")
     # ---------------------------------------
 
+    # Recount after all scrolling is done
     ad_ids = page.get_by_text(re.compile(r"ID Pustaka:|ID:", re.IGNORECASE)).all()
     count = len(ad_ids)
     
     image_path = "snapshot.png"
+    # Use full_page=True to get the giant scrolling image
     page.screenshot(path=image_path, full_page=True) 
     
     browser.close()
