@@ -13,41 +13,52 @@ def send_telegram_photo(caption, image_path):
 
 def get_ad_data(playwright: Playwright):
     browser = playwright.chromium.launch(headless=True)
-    context = browser.new_context(viewport={"width": 1280, "height": 3000})
+    context = browser.new_context(viewport={"width": 1280, "height": 1200})
     page = context.new_page()
-    page.goto(TARGET_URL, wait_until="networkidle", timeout=90000)
     
-    # --- AGGRESSIVE SCROLL & CLICK LOOP ---
-    last_height = page.evaluate("document.body.scrollHeight")
-    for i in range(10):  # Try 10 times to find more ads
-        # 1. Scroll to the bottom using the 'End' key
-        page.keyboard.press("End")
-        time.sleep(3)
+    # 1. Start with the direct Page ID link
+    page.goto(TARGET_URL, wait_until="networkidle", timeout=90000)
+    time.sleep(8) 
+
+    # This 'set' acts as your permanent memory bank
+    all_captured_ids = set()
+
+    # 2. The "Scanning Scroll"
+    for i in range(15):
+        # Scan the current viewable HTML for any Ad IDs
+        current_html = page.content()
+        # Regex for 15-16 digit Meta Ad IDs
+        found_now = re.findall(r"ID(?:\sPustaka)?:\s?(\d{15,16})", current_html)
         
-        # 2. Try to click "See More" or "Lihat Lagi" if it appears
+        for ad_id in found_now:
+            all_captured_ids.add(ad_id)
+        
+        print(f"Scroll {i+1}: Total in memory: {len(all_captured_ids)}")
+
+        # Smooth human-like scroll
+        page.mouse.wheel(0, 1500)
+        time.sleep(4)
+
+        # Handle 'See More' block
         try:
-            # Using a broader selector to find the button
-            see_more = page.locator('div[role="button"]:has-text("See More"), div[role="button"]:has-text("Lihat Lagi"), button:has-text("See More")')
-            if see_more.is_visible():
-                see_more.click(force=True)
-                print(f"Loop {i+1}: Clicked See More")
+            btn = page.get_by_role("button", name=re.compile(r"See More|Lihat Lagi|More", re.IGNORECASE)).first
+            if btn.is_visible():
+                btn.click(force=True)
                 time.sleep(4)
         except:
             pass
-            
-        # 3. Check if the page actually grew
-        new_height = page.evaluate("document.body.scrollHeight")
-        if new_height == last_height and i > 3: # If no growth after 4 tries, we're likely done
-            break
-        last_height = new_height
-    # ---------------------------------------
 
-    ad_ids = page.get_by_text(re.compile(r"ID Pustaka:|ID:", re.IGNORECASE)).all()
-    count = len(ad_ids)
+    # 3. Final count from your memory, not from the current screen
+    count = len(all_captured_ids)
     
+    # If the count is still low, Meta might have changed the 'ID' label again
+    if count == 0:
+        # Emergency fallback: count anything that looks like an Ad ID number
+        fallback_ids = re.findall(r"\"ad_id\":\"(\d+)\"|id\":(\d{15,16})", page.content())
+        count = len(set(fallback_ids))
+
     image_path = "snapshot.png"
-    page.screenshot(path=image_path, full_page=True) 
-    
+    page.screenshot(path=image_path, full_page=True)
     browser.close()
     return count, image_path
 if __name__ == "__main__":
