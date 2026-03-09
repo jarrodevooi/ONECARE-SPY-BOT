@@ -3,7 +3,7 @@ from playwright.sync_api import Playwright, sync_playwright
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-# Using the direct Page ID link for Onecare to ensure we get the full 68+ ads
+# Direct Page ID link for Onecare
 TARGET_URL = "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=MY&view_all_page_id=141890315998188&sort_data[mode]=total_impressions&sort_data[direction]=desc"
 
 def send_telegram_photo(caption, image_path):
@@ -13,55 +13,53 @@ def send_telegram_photo(caption, image_path):
 
 def get_ad_data(playwright: Playwright):
     browser = playwright.chromium.launch(headless=True)
-    context = browser.new_context(viewport={"width": 1280, "height": 1000})
+    # Using a slightly taller viewport to see more at once
+    context = browser.new_context(viewport={"width": 1280, "height": 1200})
     page = context.new_page()
 
-    captured_ids = set()
+    all_found_ids = set()
 
-    # --- IMPROVED SNIFFER ---
-    def handle_response(response):
-        # Listen to ALL data coming from Facebook's servers
-        if "graphql" in response.url or "ads/library" in response.url:
-            try:
-                # We extract the raw text and look for Ad ID patterns
-                body = response.text()
-                # Meta Ad IDs are usually 15-16 digit strings
-                found = re.findall(r'"ad_id":"(\d+)"|id":(\d{15,16})', body)
-                for pair in found:
-                    for ad_id in pair:
-                        if ad_id: captured_ids.add(ad_id)
-            except:
-                pass
+    # Load and wait for the "Heavy" Meta scripts to fire
+    page.goto(TARGET_URL, wait_until="networkidle", timeout=90000)
+    time.sleep(10)
 
-    page.on("response", handle_response)
-    
-    # 1. Load the page and wait for the first batch
-    page.goto(TARGET_URL, wait_until="domcontentloaded", timeout=90000)
-    time.sleep(10) # Initial soak time
+    # --- THE "VISUAL MEMORY" LOOP ---
+    for i in range(15):
+        # 1. Scrape every ID currently visible on the screen
+        # We look for ANY 15-16 digit number in the page text
+        content = page.content()
+        ids_on_screen = re.findall(r"ID(?:\sPustaka)?:\s?(\d{15,16})", content)
+        
+        for ad_id in ids_on_screen:
+            all_found_ids.add(ad_id)
+        
+        print(f"Scroll {i}: Currently remembered {len(all_found_ids)} unique ads...")
 
-    # 2. Aggressive Scroll to force Meta to send more data packets
-    for i in range(12):
-        page.mouse.wheel(0, 2500) 
-        time.sleep(4) 
-        # Click "See More" if it blocks the flow
+        # 2. Human-like Scroll
+        page.mouse.wheel(0, 2000)
+        time.sleep(4)
+        
+        # 3. Aggressive "See More" Clicker
         try:
-            btn = page.locator('div[role="button"]:has-text("More"), div[role="button"]:has-text("Lagi")').first
+            # Looks for 'More' or 'Lagi' buttons
+            btn = page.locator('div[role="button"]:has-text("More"), button:has-text("More"), div[role="button"]:has-text("Lagi")').first
             if btn.is_visible():
                 btn.click(force=True)
-                time.sleep(4)
+                time.sleep(3)
         except:
             pass
-        print(f"Progress: Captured {len(captured_ids)} unique ads...")
 
-    # 3. Final Count
-    count = len(captured_ids)
+    count = len(all_found_ids)
+    
+    # Fallback: if somehow it's still 0, try one last check for 'Active' badges
     if count == 0:
-        # Fallback: If sniffer fails, try a manual count of the visible IDs
-        ids_on_page = re.findall(r"ID(?:\sPustaka)?:\s?(\d+)", page.content())
-        count = len(set(ids_on_page))
+        badges = page.get_by_text(re.compile(r"Active|Aktif", re.IGNORECASE)).all()
+        count = len(badges)
 
     image_path = "snapshot.png"
+    # Take a screenshot of the final state
     page.screenshot(path=image_path, full_page=True)
+    
     browser.close()
     return count, image_path
 
@@ -70,6 +68,6 @@ if __name__ == "__main__":
         try:
             current_count, img_path = get_ad_data(playwright)
             send_telegram_photo(f"✅ Onecare Spy Report: {current_count} ads found.", img_path)
-            print(f"Final Result: {current_count} ads sent to Telegram.")
+            print(f"Done! Final Count: {current_count}")
         except Exception as e:
             print(f"Error: {e}")
