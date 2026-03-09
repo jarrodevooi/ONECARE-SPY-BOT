@@ -3,7 +3,6 @@ from playwright.sync_api import Playwright, sync_playwright
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-# Direct Page ID link for Onecare
 TARGET_URL = "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=MY&view_all_page_id=141890315998188&sort_data[mode]=total_impressions&sort_data[direction]=desc"
 
 def send_telegram_photo(caption, image_path):
@@ -16,18 +15,25 @@ def get_ad_data(playwright: Playwright):
     context = browser.new_context(viewport={"width": 1280, "height": 1200})
     page = context.new_page()
     
-    # 1. Start with the direct Page ID link
-    page.goto(TARGET_URL, wait_until="networkidle", timeout=90000)
-    time.sleep(8) 
+    page.goto(TARGET_URL, wait_until="domcontentloaded", timeout=90000)
+    time.sleep(10) 
 
-    # This 'set' acts as your permanent memory bank
+    # --- THE SHIELD BREAKER ---
+    # Click 'Accept Cookies' or 'Close' on any country pop-ups that block the scroll
+    try:
+        # Closes the common 'Select Country' or 'Cookie' overlays
+        page.get_by_role("button", name=re.compile(r"Accept|Allow|Allow all|Tutup|Close", re.IGNORECASE)).first.click(timeout=5000)
+        print("Shield Breaker: Cleared overlays.")
+        time.sleep(2)
+    except:
+        pass
+
     all_captured_ids = set()
 
-    # 2. The "Scanning Scroll"
+    # --- THE SCANNING SCROLL ---
     for i in range(15):
-        # Scan the current viewable HTML for any Ad IDs
         current_html = page.content()
-        # Regex for 15-16 digit Meta Ad IDs
+        # Captures IDs even if Meta tries to hide them in the DOM
         found_now = re.findall(r"ID(?:\sPustaka)?:\s?(\d{15,16})", current_html)
         
         for ad_id in found_now:
@@ -48,19 +54,19 @@ def get_ad_data(playwright: Playwright):
         except:
             pass
 
-    # 3. Final count from your memory, not from the current screen
     count = len(all_captured_ids)
     
-    # If the count is still low, Meta might have changed the 'ID' label again
+    # Fallback to counting "Active" labels if ID scraping fails
     if count == 0:
-        # Emergency fallback: count anything that looks like an Ad ID number
-        fallback_ids = re.findall(r"\"ad_id\":\"(\d+)\"|id\":(\d{15,16})", page.content())
-        count = len(set(fallback_ids))
+        active_labels = re.findall(r"Active|Aktif", page.content(), re.IGNORECASE)
+        count = len(active_labels)
 
     image_path = "snapshot.png"
-    page.screenshot(path=image_path, full_page=True)
+    # Take a screenshot of the top of the feed to confirm it's not a blank page
+    page.screenshot(path=image_path)
     browser.close()
     return count, image_path
+
 if __name__ == "__main__":
     with sync_playwright() as playwright:
         try:
