@@ -13,58 +13,40 @@ def send_telegram_photo(caption, image_path):
 
 def get_ad_data(playwright: Playwright):
     browser = playwright.chromium.launch(headless=True)
-    # Using a taller viewport to trigger more initial ads
-    context = browser.new_context(viewport={"width": 1280, "height": 1200})
+    context = browser.new_context(viewport={"width": 1280, "height": 3000})
     page = context.new_page()
-
-    all_found_ids = set()
-
-    # 1. Go to the Page ID link
     page.goto(TARGET_URL, wait_until="networkidle", timeout=90000)
     
-    # 2. CRITICAL: Wait for the OneCare profile header to actually exist
-    # This prevents the '0 ads' error by making sure the page isn't blank
-    try:
-        page.wait_for_selector('div[role="main"]', timeout=20000)
-        time.sleep(5) 
-    except:
-        print("Page took too long to load, attempting to scroll anyway...")
-
-    # --- THE VISUAL MEMORY LOOP ---
-    for i in range(15):
-        # Scrape IDs currently visible in the HTML
-        content = page.content()
-        # Facebook Ad IDs are 15-16 digits
-        ids_on_screen = re.findall(r"ID(?:\sPustaka)?:\s?(\d{15,16})", content)
+    # --- AGGRESSIVE SCROLL & CLICK LOOP ---
+    last_height = page.evaluate("document.body.scrollHeight")
+    for i in range(10):  # Try 10 times to find more ads
+        # 1. Scroll to the bottom using the 'End' key
+        page.keyboard.press("End")
+        time.sleep(3)
         
-        for ad_id in ids_on_screen:
-            all_found_ids.add(ad_id)
-        
-        print(f"Scroll {i}: Unique ads in memory: {len(all_found_ids)}")
-
-        # Human-like scroll
-        page.mouse.wheel(0, 2000)
-        time.sleep(4)
-        
-        # Handle the 'See More' / 'Lagi' button
+        # 2. Try to click "See More" or "Lihat Lagi" if it appears
         try:
-            btn = page.locator('div[role="button"]:has-text("More"), button:has-text("More"), div[role="button"]:has-text("Lagi")').first
-            if btn.is_visible():
-                btn.click(force=True)
+            # Using a broader selector to find the button
+            see_more = page.locator('div[role="button"]:has-text("See More"), div[role="button"]:has-text("Lihat Lagi"), button:has-text("See More")')
+            if see_more.is_visible():
+                see_more.click(force=True)
+                print(f"Loop {i+1}: Clicked See More")
                 time.sleep(4)
         except:
             pass
+            
+        # 3. Check if the page actually grew
+        new_height = page.evaluate("document.body.scrollHeight")
+        if new_height == last_height and i > 3: # If no growth after 4 tries, we're likely done
+            break
+        last_height = new_height
+    # ---------------------------------------
 
-    count = len(all_found_ids)
+    ad_ids = page.get_by_text(re.compile(r"ID Pustaka:|ID:", re.IGNORECASE)).all()
+    count = len(ad_ids)
     
-    # Final Fallback: If memory is still 0, count the "Active" status labels
-    if count == 0:
-        badges = page.get_by_text(re.compile(r"Active|Aktif", re.IGNORECASE)).all()
-        count = len(badges)
-
     image_path = "snapshot.png"
-    # Screenshot of the page showing the ads (not a blank search bar)
-    page.screenshot(path=image_path, full_page=True)
+    page.screenshot(path=image_path, full_page=True) 
     
     browser.close()
     return count, image_path
