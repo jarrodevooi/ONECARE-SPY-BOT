@@ -4,10 +4,12 @@ import time
 import requests
 from playwright.sync_api import Playwright, sync_playwright
 
-# Pulls from the Secrets "Vault" you already set up
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-TARGET_URL = "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=MY&q=onecare&search_type=keyword_unordered&sort_data[mode]=total_impressions&sort_data[direction]=desc"
+
+# --- FIX 1: USE THE OFFICIAL PAGE ID URL ---
+# This ensures you see the REAL brand ads, not just keyword matches
+TARGET_URL = "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=MY&view_all_page_id=141890315998188&sort_data[mode]=total_impressions&sort_data[direction]=desc"
 
 def send_telegram_photo(caption, image_path):
     url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
@@ -16,31 +18,28 @@ def send_telegram_photo(caption, image_path):
 
 def get_ad_data(playwright: Playwright):
     browser = playwright.chromium.launch(headless=True)
-    # Use a standard desktop view but we will scroll it like a pro
     context = browser.new_context(viewport={"width": 1280, "height": 900}) 
     page = context.new_page()
     page.goto(TARGET_URL, wait_until="networkidle", timeout=90000)
     time.sleep(7)
 
-    all_found_ids = set() # This is our "Memory"
+    all_found_ids = set() # This is your 'Memory' to beat the 30-ad limit
     
-    # --- THE RUNNING TOTAL SCROLL ---
-    for i in range(20): # More loops for high-volume accounts
-        # 1. Scrape IDs currently visible on the screen
+    # --- FIX 2: THE MEMORY LOOP ---
+    for i in range(15): 
+        # 1. Grab IDs currently on screen before Meta deletes them
         current_content = page.content()
         ids_on_screen = re.findall(r"ID(?:\sPustaka)?:\s?(\d+)", current_content)
         
-        # 2. Add them to our permanent set (automatically removes duplicates)
         for ad_id in ids_on_screen:
             all_found_ids.add(ad_id)
         
-        print(f"Loop {i}: Total unique ads found so far: {len(all_found_ids)}")
+        print(f"Loop {i}: Found {len(all_found_ids)} unique ads so far...")
 
-        # 3. Scroll down to trigger the NEXT batch
+        # 2. Scroll and click to trigger more ads
         page.mouse.wheel(0, 2000) 
-        time.sleep(4) # Give Meta time to swap the 30 ads
+        time.sleep(4)
         
-        # 4. Handle the "See More" button if it blocks the scroll
         try:
             btn = page.locator('div[role="button"]:has-text("More"), button:has-text("More"), div[role="button"]:has-text("Lagi")').first
             if btn.is_visible():
@@ -49,32 +48,19 @@ def get_ad_data(playwright: Playwright):
         except:
             pass
 
-    # --- FINAL RESULTS ---
+    # Final result using your collected memory
     final_count = len(all_found_ids)
     image_path = "snapshot.png"
-    # Take a screenshot of the CURRENT view (usually the bottom of the list)
     page.screenshot(path=image_path, full_page=True) 
     
     browser.close()
     return final_count, image_path
-    # ---------------------------------------
-
-    # Recount after all scrolling is done
-    ad_ids = page.get_by_text(re.compile(r"ID Pustaka:|ID:", re.IGNORECASE)).all()
-    count = len(ad_ids)
-    
-    image_path = "snapshot.png"
-    # Use full_page=True to get the giant scrolling image
-    page.screenshot(path=image_path, full_page=True) 
-    
-    browser.close()
-    return count, image_path
 
 if __name__ == "__main__":
     with sync_playwright() as playwright:
         try:
             current_count, img_path = get_ad_data(playwright)
-            send_telegram_photo(f"✅ Onecare Spy Report: {current_count} ads.", img_path)
-            print("Done!")
+            send_telegram_photo(f"✅ Onecare Spy Report: {current_count} ads found.", img_path)
+            print(f"Done! Final count: {current_count}")
         except Exception as e:
             print(f"Error: {e}")
