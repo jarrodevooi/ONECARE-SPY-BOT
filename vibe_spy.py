@@ -15,41 +15,46 @@ def send_telegram_photo(caption, image_path):
         requests.post(url, data={"chat_id": CHAT_ID, "caption": caption}, files={"photo": photo})
 
 def get_ad_data(playwright: Playwright):
+    # 1. Use a Mobile Device Profile
+    iphone = playwright.devices['iPhone 13']
     browser = playwright.chromium.launch(headless=True)
-    # Give the bot a "Phone-like" taller view to trigger more loads
-    context = browser.new_context(viewport={"width": 1280, "height": 1000}) 
+    
+    # 2. Set the context to mimic a real mobile phone
+    context = browser.new_context(
+        **iphone,
+        user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1"
+    )
+    
     page = context.new_page()
     page.goto(TARGET_URL, wait_until="networkidle", timeout=90000)
     time.sleep(8)
 
-    # --- THE "THUMB FLICK" SIMULATION ---
-    for i in range(12): # 12 scrolls should cover ~100+ ads
-        # Scroll down 1500 pixels (like a big thumb swipe)
-        page.mouse.wheel(0, 1500) 
-        time.sleep(3) # CRITICAL: Wait for the "Loading" circle to finish
+    # --- MOBILE SCROLL LOOP ---
+    for i in range(15): 
+        # Mimic a thumb flick (scroll down 1200 pixels)
+        page.mouse.wheel(0, 1200) 
+        time.sleep(3) 
         
-        # Click the "See More" button if it appears
+        # Mobile often has a "Load More" button instead of "See More"
         try:
-            # Facebook uses a specific class for that button in 2026
-            see_more = page.locator('div[role="button"]:has-text("See More"), div[role="button"]:has-text("Lihat Lagi")').first
-            if see_more.is_visible():
-                see_more.click(force=True)
-                print(f"Scroll {i}: Clicked See More")
+            load_more = page.get_by_role("button", name=re.compile(r"Load|More|Lagi", re.IGNORECASE)).first
+            if load_more.is_visible():
+                load_more.click(force=True)
+                print(f"Mobile Loop {i}: Tapped Load More")
                 time.sleep(4)
         except:
             pass
 
-    # --- THE "ID" COUNTING TRICK ---
-    # We count every unique "ID Pustaka" or "ID:" text found on the long page
-    all_text = page.content()
-    # This regex finds the pattern of ID numbers Facebook uses
-    found_ids = re.findall(r"ID(?:\sPustaka)?:\s?(\d+)", all_text)
-    unique_ids = set(found_ids) # Removes any double-counts
+    # --- ACCURATE MOBILE COUNT ---
+    # Scrape all unique Ad IDs from the mobile source code
+    all_content = page.content()
+    found_ids = re.findall(r"ID(?:\sPustaka)?:\s?(\d+)", all_content)
+    unique_ids = set(found_ids)
     count = len(unique_ids)
     
+    # Take a tall screenshot that looks like a phone screen
     image_path = "snapshot.png"
-    # Take a "Tall" screenshot of the first 8000 pixels
-    page.screenshot(path=image_path, clip={"x": 0, "y": 0, "width": 1280, "height": 8000}) 
+    page.screenshot(path=image_path, clip={"x": 0, "y": 0, "width": 390, "height": 5000}) 
     
     browser.close()
     return count, image_path
