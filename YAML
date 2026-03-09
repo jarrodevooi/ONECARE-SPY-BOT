@@ -1,0 +1,23 @@
+name: Vibehaus Bot Deploy
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+jobs:
+  run-spy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install Tools
+        run: |
+          pip install playwright requests
+          playwright install --with-deps chromium
+      - name: Run Bot
+        run: python vibe_spy.py
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
