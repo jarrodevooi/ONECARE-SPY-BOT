@@ -1,12 +1,10 @@
 name: Vibe Spy Bot
 
 on:
-  push:
-    branches: [ "main" ]
   schedule:
-    # This runs the bot every day at 9:00 AM (MYT)
+    # 01:00 UTC = 9:00 AM Malaysia (UTC+8)
     - cron: '0 1 * * *'
-  workflow_dispatch:
+  workflow_dispatch: # Keeps the manual 'Run' button
 
 jobs:
   run-bot:
