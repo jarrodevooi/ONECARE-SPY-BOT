@@ -9,7 +9,6 @@ jobs:
   run-bot:
     runs-on: ubuntu-latest
     steps:
-      # THIS IS THE MISSING PIECE:
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -21,8 +20,11 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          # If you don't have a requirements.txt yet, 
-          # pip install the specific libraries your bot needs here
+          playwright install chromium --with-deps
 
       - name: Run script
+        env:
+          # These must match your os.getenv names in vibe_spy.py
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
         run: python vibe_spy.py
