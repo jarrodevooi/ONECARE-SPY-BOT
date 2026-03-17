@@ -56,8 +56,10 @@ def get_ad_data(playwright: Playwright):
         # Give extra time to render
         page.wait_for_timeout(3000)
 
-        ads = page.locator('[role="article"]')
-        count = ads.count()
+       ads1 = page.locator('div[data-ad-preview="message"]')
+ads2 = page.locator('div[role="article"]')
+
+count = max(ads1.count(), ads2.count())
 
         if count == 0:
             print("⚠️ Warning: 0 ads detected — possible block")
