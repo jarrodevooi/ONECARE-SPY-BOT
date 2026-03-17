@@ -58,17 +58,29 @@ def get_ad_data(playwright: Playwright):
 
         page.wait_for_timeout(3000)
 
-        # ✅ Try to get official result count
-        try:
-            results_text = page.locator("text=/\\d+ results/").first.text_content()
-            import re
-            match = re.search(r"\d+", results_text)
-            count = int(match.group()) if match else 0
-        except:
-            # fallback counting
-            ads1 = page.locator('div[data-ad-preview="message"]')
-            ads2 = page.locator('div[role="article"]')
-            count = max(ads1.count(), ads2.count())
+    count = 0
+
+try:
+    # Get all visible text on the page
+    body_text = page.locator("body").inner_text()
+
+    import re
+    # Look for a number followed by 'results' anywhere in the text
+    match = re.search(r"(\d{2,4})\s*results", body_text.lower())
+
+    if match:
+        count = int(match.group(1))
+    else:
+        print("⚠️ Could not find results text, falling back...")
+
+except Exception as e:
+    print("Error extracting results:", e)
+
+# Fallback if still 0
+if count == 0:
+    ads1 = page.locator('div[data-ad-preview="message"]')
+    ads2 = page.locator('div[role="article"]')
+    count = max(ads1.count(), ads2.count())
 
         image_path = "snapshot.png"
         page.screenshot(path=image_path, full_page=True)
