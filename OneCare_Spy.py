@@ -18,14 +18,23 @@ def get_ad_data(playwright: Playwright):
     browser = playwright.chromium.launch(headless=True)
     context = browser.new_context(viewport={"width": 1280, "height": 2000})
     page = context.new_page()
-    page.goto(TARGET_URL, wait_until="domcontentloaded", timeout=90000)
-    time.sleep(7) 
-    
-    ad_ids = page.get_by_text(re.compile(r"ID Pustaka:|ID:", re.IGNORECASE)).all()
-    count = len(ad_ids)
-    
+
+    page.goto(TARGET_URL, timeout=90000)
+
+    # Wait for ads to appear
+    page.wait_for_selector('[role="article"]', timeout=30000)
+
+    # Scroll to load more ads
+    for _ in range(5):
+        page.mouse.wheel(0, 3000)
+        time.sleep(2)
+
+    ads = page.locator('[role="article"]')
+    count = ads.count()
+
     image_path = "snapshot.png"
-    page.screenshot(path=image_path)
+    page.screenshot(path=image_path, full_page=True)
+
     browser.close()
     return count, image_path
 
