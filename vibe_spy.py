@@ -45,24 +45,30 @@ def get_ad_data(playwright: Playwright):
     try:
         page.goto(TARGET_URL, timeout=90000)
 
-        # Wait for ads to appear
-        page.wait_for_selector('[role="article"]', timeout=30000)
+        time.sleep(5)
 
-        # Scroll to load more ads
+        page.mouse.move(100, 100)
+        page.click("body")
+
+        page.wait_for_selector('div[role="article"]', timeout=30000)
+
         for _ in range(8):
             page.mouse.wheel(0, 5000)
             time.sleep(2)
 
-        # Give extra time to render
         page.wait_for_timeout(3000)
 
-       ads1 = page.locator('div[data-ad-preview="message"]')
-ads2 = page.locator('div[role="article"]')
-
-count = max(ads1.count(), ads2.count())
-
-        if count == 0:
-            print("⚠️ Warning: 0 ads detected — possible block")
+        # ✅ Try to get official result count
+        try:
+            results_text = page.locator("text=/\\d+ results/").first.text_content()
+            import re
+            match = re.search(r"\d+", results_text)
+            count = int(match.group()) if match else 0
+        except:
+            # fallback counting
+            ads1 = page.locator('div[data-ad-preview="message"]')
+            ads2 = page.locator('div[role="article"]')
+            count = max(ads1.count(), ads2.count())
 
         image_path = "snapshot.png"
         page.screenshot(path=image_path, full_page=True)
